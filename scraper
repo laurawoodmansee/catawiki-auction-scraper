@@ -1,0 +1,184 @@
+# Part 1
+# run this code before auction ends to collect id numbers of all items in auction and their planned end time
+#before auction ends
+
+import requests 
+from datetime import datetime
+from bs4 import BeautifulSoup
+import requests
+import json
+import pandas as pd  
+
+
+# insert auction page
+page = requests.get('https://www.catawiki.com/a/461519-classical-artworks-auction')
+
+soup = BeautifulSoup(page.content, 'html.parser')
+container = soup.find('main', class_='u-col-9-12 u-move-4-12 u-col-6-9-m u-move-4-9-m')
+# insert auction page url, name, id and type of auction id
+# auction types:
+# 1 = classical artworks auction 
+# 2 = affordable classical artworks auction
+# 3 = classical print auction
+# 4 = antique print auction
+# 5 = premium classical print auction 
+
+auction_url = 'https://www.catawiki.com/a/461519-classical-artworks-auction'
+auction_name = 'classical artworks auction'
+auction_id = 1
+auction_id_type = 1
+
+# extracting the value of 'results' 
+data_prop = json.loads(container.select_one("div.be-lot-list__loader")['data-props'])
+results = data_prop.get('results')
+
+#list with the ids
+item_id_list = []
+for result in results:
+    item_id_list.append(str(result['id']))
+    
+# api lots with start and close time
+api_before_lots = []
+for result in results:
+    lots = requests.get('https://www.catawiki.com/buyer/api/v1/lots/live?ids=,' + str(result['id'])).json()
+    api_before_lots.append(lots)
+    
+# dictionary with lots and ids
+before_lots_diction = dict(zip(item_id_list, api_before_lots))
+
+##Part 2
+#to run after auction has ended
+
+
+#https://www.catawiki.com/buyer/api/v3/lots/50534259/bids?currency_code=EUR&per_page=200
+#collect data from the 3 different api's and create dictionaries with item id numbers as keys and data collected as values
+api_list = []
+for result in results:
+    lots = requests.get('https://www.catawiki.com/buyer/api/v3/lots/' + str(result['id']) + '/bids?currency_code=EUR&per_page=200').json()
+    api_list.append(lots)    
+
+api_diction = dict(zip(item_id_list, api_list))
+
+
+biddingblock_list = []
+for result in results:
+    lots = requests.get('https://www.catawiki.com/buyer/api/v3/lots/' + str(result['id']) + 
+                        '/bidding_block?currency_code=EUR').json()
+    biddingblock_list.append(lots)    
+biddingblock_diction = dict(zip(item_id_list, biddingblock_list))
+
+# lots info with start and close time
+api_lots = []
+for result in results:
+    lots = requests.get('https://www.catawiki.com/buyer/api/v1/lots/live?ids=,' + str(result['id'])).json()
+    api_lots.append(lots)
+lots_diction = dict(zip(item_id_list, api_lots))
+
+
+
+### following creates list of dictionaries, with all variables of interest relationing to items in auction
+
+list_data = []
+number_of_items = 0
+for result in results:
+    
+    url = result['url']
+    number_of_items +=1
+    ids = result['id']
+    titles = result['title']
+    subtitles = result['subtitle']
+    favoriteCounts = result['favoriteCount']
+    auctionIds = result['auctionId']
+    biddingStartTimes = result['biddingStartTime']
+    start_time = lots_diction[str(result['id'])]['lots'][0]['bidding_start_time']
+    starttime_date = start_time[0:10]
+    starttime_time = start_time[11:19]
+    planned_end = before_lots_diction[str(result['id'])]['lots'][0]['bidding_end_time']
+    planned_end_time = planned_end[11:19]
+    end_time = lots_diction[str(result['id'])]['lots'][0]['bidding_end_time']
+    endtime_date = end_time[0:10]
+    endtime_time = end_time[11:19]
+    list_of_bidders = []
+    highest_bid_amount = biddingblock_diction[str(result['id'])]['bidding_block']['lot']['highest_bid_amount']
+    next_minimum_bid = biddingblock_diction[str(result['id'])]['bidding_block']['lot']['next_minimum_bid']
+    minimum_bid_amount = (next_minimum_bid - highest_bid_amount)
+    reserve_price_met = ''
+    lowest_bid_list = []
+    if lots_diction[str(result['id'])]['lots'][0]['reserve_price_met'] is None:
+        reserve_price_met = 'True'
+    elif lots_diction[str(result['id'])]['lots'][0]['reserve_price_met'] == True:
+        reserve_price_met = 'True'
+    else:
+        reserve_price_met = 'False'
+    dict_keys = ['Auction_id','Auction_id_type', 'Item_title', 'Item_id', 'Favorite_count', 'Bidder', 'Bidder_id_number', 
+                 'Amount', 'Bidded_time', 'Bid_time_date', 'Bid_time', 'Start_time', 'Item_start_date', 
+                 'Item_start_time', 'Planned_end', 'Planned_end_time',
+                 'End_time', 'Item_end_date', 'Item_end_time', 'Minimum_interval_bid_amount', 'Reserve_price_met',
+                'Lowest_bid_amount', 'Highest_bid_amount', 'Total_bids', 'url', 'auction_url', 'auction_name']
+    if api_diction[str(result['id'])]['bids'] is None:
+        dict_data = {}
+        total = 0
+        bidder = None
+        bidder_id_number = None
+        amountb = None
+        atb = None
+        bidtime_date = None
+        bidtime_time = None
+        lowest_bid_amount = None
+        nr_of_bidders = 0
+        dict_values = [auction_id, auction_id_type, titles, ids, favoriteCounts, bidder, bidder_id_number, amountb, 
+                       atb, bidtime_date, bidtime_time, start_time, starttime_date, starttime_time,
+                       planned_end,
+                       planned_end_time, end_time, endtime_date, endtime_time,
+                      minimum_bid_amount, reserve_price_met, lowest_bid_amount, highest_bid_amount, total, url, 
+                       auction_url, auction_name]
+        for i in range(len(dict_keys)):
+            dict_data[dict_keys[i]] = dict_values[i]
+        list_data.append(dict_data)
+    else:
+        for i in range(len(api_diction[str(result['id'])]['bids']))[::-1]:
+            dict_data = {}
+            bidder = api_diction[str(result['id'])]['bids'][i]['bidder']['name']
+            bidder_id_number = bidder[7:]
+            amountb = api_diction[str(result['id'])]['bids'][i]['amount']
+            lowest_bid_list.append(amountb)
+            lowest_bid_amount = min(lowest_bid_list)
+            atb = api_diction[str(result['id'])]['bids'][i]['created_at']
+            bidtime_date = atb[0:10]
+            bidtime_time = atb[11:19]
+            total = api_diction[str(result['id'])]['meta']['total']
+            dict_values = [auction_id, auction_id_type, titles, ids, favoriteCounts, bidder, bidder_id_number, amountb, 
+                       atb, bidtime_date, bidtime_time, start_time, starttime_date, starttime_time, 
+                           planned_end,
+                           planned_end_time, end_time, endtime_date, endtime_time,
+                          minimum_bid_amount, reserve_price_met, lowest_bid_amount, highest_bid_amount, total, url, 
+                           auction_url, auction_name]
+            for i in range(len(dict_keys)):
+                dict_data[dict_keys[i]] = dict_values[i]
+            list_data.append(dict_data)
+            list_of_bidders.append(bidder_id_number)
+        unique_bidders = list(set(list_of_bidders))
+        nr_of_bidders = len(unique_bidders)
+    for i in range(len(list_data)):
+        if list_data[i]['Item_id'] == result['id']:
+            item = list_data[i]
+            item.update({'Number_of_bidders' : nr_of_bidders } )
+
+    for i in range(len(list_data)):
+        pt = datetime.strptime(list_data[i]['Planned_end'], "%Y-%m-%dT%H:%M:%SZ") 
+        et = datetime.strptime(list_data[i]['End_time'], "%Y-%m-%dT%H:%M:%SZ")
+        if pt<et:
+            extended = 1
+        else:
+            extended = 0
+    for i in range(len(list_data)):
+        if list_data[i]['Item_id'] == result['id']:
+            item = list_data[i]
+            item.update({'Auction_extended' : extended } )
+    
+        
+#creates dataframe from list
+
+df_scraped = pd.DataFrame(list_data)
+
+df_scraped
